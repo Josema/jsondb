@@ -1,0 +1,22 @@
+<script type="text/javascript" src="../jsondb.js"></script>
+<script type="text/javascript">
+	
+var test = jsondb.collection('test');
+test.drop();
+test.insert(a=[{a:111},{a:222},{a:333}])
+test.insert(b=[{a:111},{a:111},{a:111}])
+test.insert(c=[{a:222},{a:222},{a:222}])
+test.insert(d=[{a:333},{a:333},{a:333}])
+
+
+console.assert(test.find().length==12, '1. All results')
+console.assert(test.find(2)[0] == a[2], '2. Find by index')
+console.assert(test.find(a[2],null,true)[0] == 2, 'Find by element and getting the index number')
+console.assert(test.find({a:111}).length == 4, 'Simple property match')
+console.assert(test.find({a:111})[1] == b[0], 'Matching order')
+console.assert(test.find({a:111},null,true)[1] == 3, 'Checking index returned')
+console.assert(test.find({a:111, $filter: function(e,index){ return index>2; }})[1] == b[1], 'With $filter')
+
+
+
+</script>
