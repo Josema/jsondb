@@ -31,6 +31,21 @@ var jsondb = (function() {
         return JSON.stringify( elem );
     };
 
+    var parse = function( str ) {
+
+        return JSON.parse(str, function (k, v) {
+            
+            //http://jsperf.com/serializing-date-on-json-parse
+            if ( typeof v === 'string' ) {
+                var regexp = /^\d\d\d\d-\d\d-\d\dT\d\d:\d\d:\d\d.\d\d\dZ$/.exec(v);
+                if ( regexp )
+                    return new Date(v);
+            }
+
+            return v;
+
+        });
+    };
 
     // https://github.com/Josenzo/sortBy
     var orderby = (function(){
@@ -180,7 +195,7 @@ var jsondb = (function() {
 
             var item = localStorage.getItem( key );
             try {
-                item = JSON.parse(item);
+                item = parse(item);
             } catch(e) {}
 
             keys[key] = item;
@@ -464,7 +479,7 @@ var jsondb = (function() {
             // var $this = this;
 
             keys[key] = this.get( key );
-
+            console.log( 123, keys[key] );
             if ( !isArray( keys[key] ) )
                 methods.drop();
 
