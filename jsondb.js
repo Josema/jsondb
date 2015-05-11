@@ -2,314 +2,317 @@
 
 var jsondb = (function() {
 
-	var keys = {},
-		lastid = new Date().getTime(),
-		modifier = {
-			filter: '$filter',
-			orderby: '$orderby'
-		};
+    var keys = {},
+        lastid = new Date().getTime(),
+        keyid = '_id',
+        modifier = {
+            filter: '$filter',
+            orderby: '$orderby'
+        };
 
 
-	// http://jsperf.com/typeof-array-5-ways
-	var isArray = function( arr ) {
-		return arr instanceof Array;
-	};
+    // http://jsperf.com/typeof-array-5-ways
+    var isArray = function( arr ) {
+        return arr instanceof Array;
+    };
 
-	// http://jsperf.com/js-for-loop-vs-array-indexof/272
-	var indexOf = function(arr, tosearch) {
+    // http://jsperf.com/js-for-loop-vs-array-indexof/272
+    var indexOf = function(arr, tosearch) {
 
-		for ( var i=0, t=arr.length; i<t; i++ )
-			if ( arr[i] === tosearch )
-				return i;
+        for ( var i=0, t=arr.length; i<t; i++ )
+            if ( arr[i] === tosearch )
+                return i;
 
-		return -1;
+        return -1;
 
-	};
+    };
 
-	var stringify = function( elem ) {
-		return JSON.stringify( elem );
-	};
+    var stringify = function( elem ) {
+        return JSON.stringify( elem );
+    };
 
-var sortBydeep=Array.prototype.sortBydeep=function(){var a=function(a,b){try{for(var c=0;c<b.length-1;c++)a=a[b[c]];return a[b[c]]}catch(d){return a}};return function(){var b,c,d,e,f,g,h=arguments.length-1,i=1,j=arguments[0];for(this instanceof Array&&(j=this,i=0);h>=i;h--)b=1,g=arguments[h].split("."),d=g.length>1,c=g[0],"-"!=c.charAt(0)||j[0].hasOwnProperty(c)||(b=-1,c=g[0]=c.slice(1)),j.sort(function(h,i){return d?(e=a(h,g),f=a(i,g)):(e=h[c],f=i[c]),e===f?0:(type=typeof e,"string"==type?(e>f?1:-1)*b:"number"==type||"boolean"==type||e instanceof Date?(e-f)*b:1)});return j}}();
 
-	// https://github.com/Josenzo/sortBy
-	var orderby = (function(){
-	
-		var get = function(obj, path) {
+    // https://github.com/Josenzo/sortBy
+    var orderby = (function(){
+        
 
-			try {
-				for (var i = 0; i<path.length-1; i++)
-					obj = obj[ path[i] ];
+        // Utility to get deep propertis by the path given
+        var get = function(obj, path) {
 
-				return obj[ path[i] ];
-			} catch(e) {
-				return obj;
-			}
+            try {
+                for (var i = 0; i<path.length-1; i++)
+                    obj = obj[ path[i] ];
 
-		};
+                return obj[ path[i] ];
+            } catch(e) {
+                return obj;
+            }
 
-		return function() {
+        };
 
-			var asc, property, isdeep, one, two, path, i=arguments.length-1, until=0, array=this;
 
-			for (; i>=until; i-- ) {
+        return function() {
 
-				asc = 1;
-				path = arguments[i].split('.');
-				isdeep = path.length > 1;
-				property = path[0];
+            var property, one, two, diff, i=0, total=arguments.length, array=this, properties=[];
 
-				// Reverse
-				if ( property.charAt(0) == '-' && !array[0].hasOwnProperty(property) ) {
-					asc = -1;
-					property = path[0] = property.slice(1);
-				}
 
-				array.sort(function( a, b ) {
+            // Storing the properties needed for the search
+            for (; i<total; i++ ) {
 
+                property = {};
+                property.asc = 1;
+                property.path = arguments[i].split('.');
+                property.isdeep = property.path.length > 1;
+                property.name = property.path[0];
 
-					if (isdeep) {
-						one = get(a, path);
-						two = get(b, path);
-					}
-					else {
-						one = a[property];
-						two = b[property];
-					}
+                // Reverse
+                if ( property.name.charAt(0) == '-' && !array[0].hasOwnProperty(property.name) ) {
+                    property.asc = -1;
+                    property.name = property.path[0] = property.name.slice(1);
+                }
 
+                properties.push( property );
 
+            }
 
-					if ( one === two )
-						return 0;
 
 
-					type = typeof one;
 
-					if ( type == 'string' )
-						return ((one > two) ? 1 : -1) * asc;
 
-					if ( type == 'number' || type == 'boolean' || one instanceof Date )
-						return (one - two) * asc;
+            array.sort(function check( a, b, j ) {
 
-					else
-						return 1;
+                // We check if the number is passed as parameter, if not we define it as 0 because is the first property to check
+                if (typeof j != 'number')
+                    j = 0;
+                // If j is greater than the total of arguments mean that we checked all the properties and all of them give us 0
+                else if ( j>(i-1) )
+                    return 0;
 
-				});
 
-			}
 
-			return array;
+                property = properties[j];
 
-		}
+                // If the property is deep
+                if ( property.isdeep ) {
+                    one = get(a, property.path);
+                    two = get(b, property.path);
+                }
+                else {
+                    one = a[property.name];
+                    two = b[property.name];
+                }
 
-	})();
 
+                // The check
+                if ( one === two )
+                    diff = 0;
 
-	var ismodifier = function( k ) {
-		return (k==modifier.filter || k==modifier.orderby);
-	};
+                else if ( typeof one == 'string' )
+                    diff = ((one > two) ? 1 : -1) * property.asc;
 
+                else if ( typeof one == 'number' || typeof one == 'boolean' || one instanceof Date )
+                    diff = (one - two) * property.asc;
 
-	var find = function( item, index, query ) {
+                else
+                    return 1;
 
-		if (typeof item != 'object')
-			return false;
+                // If diff is 0 we should recall the check function to check the other properties
+                return diff || check( a, b, j+1 );
 
-		var k;
-		for (k in query)
+            });
 
-			if ( !ismodifier(k) )
 
-				if ( !item.hasOwnProperty(k) || query[k] !== item[k] )
+            return array;
 
-					return false;
-			
+        }
 
-		return true;
+    })();
 
-	};
 
 
+    var ismodifier = function( k ) {
+        return (k==modifier.filter || k==modifier.orderby);
+    };
 
-	return {
 
-		set: function (key, item) {
+    var find = function( item, index, query ) {
 
-			keys[key] = item;
+        if (typeof item != 'object')
+            return false;
 
-			if (typeof item != 'string') {
-				try {
-					item = stringify( item );
-				} catch (e) {} 
-			}
+        var k;
+        for (k in query)
 
-			localStorage.setItem(key, item);
+            if ( !ismodifier(k) )
 
-		},
+                if ( !item.hasOwnProperty(k) || query[k] !== item[k] )
 
+                    return false;
+            
 
-		get: function (key) {
+        return true;
 
-			if ( keys.hasOwnProperty(key) )
-				return keys[key];
+    };
 
-			var item = localStorage.getItem( key );
-			try {
-				item = JSON.parse(item);
-			} catch(e) {}
 
-			keys[key] = item;
-			return item;
 
-		},
+    return {
 
+        set: function (key, item) {
 
-		remove: function (key) {
-			delete keys[key];
-			localStorage.removeItem( key );
-		},
+            keys[key] = item;
 
+            if (typeof item != 'string') {
+                try {
+                    item = stringify( item );
+                } catch (e) {} 
+            }
 
+            localStorage.setItem(key, item);
 
-		collection: function( key ) {
+        },
 
 
-			var methods = {
+        get: function (key) {
 
+            if ( keys.hasOwnProperty(key) )
+                return keys[key];
 
-				find: function( query, callback, returnindex ) { // Array: all the items founds
+            var item = localStorage.getItem( key );
+            try {
+                item = JSON.parse(item);
+            } catch(e) {}
 
+            keys[key] = item;
+            return item;
 
-					// if has 0 parameters return all the items of the collection
-					if (arguments.length == 0)
-						return keys[key];
+        },
 
 
+        remove: function (key) {
+            delete keys[key];
+            localStorage.removeItem( key );
+        },
 
 
-					// If query is a object
-					if ( query && typeof query == 'object' ) {
 
-						// If query is a item of the collection itself
-						var index_query = indexOf(keys[key], query);
-						if ( index_query > -1 ) {
+        collection: function( key ) {
 
-							if (callback)
-								callback( keys[key][index_query],  index_query);
 
-							return [ (returnindex) ? index_query : keys[key][index_query] ];
-						}
+            var methods = {
 
-					}
 
-					// If query is a int (index of the collection)
-					else if (typeof query == 'number') {
+                find: function( query, callback, returnindex ) { // Array: all the items founds
 
-						if ( keys[key].hasOwnProperty( query ) ) {
 
-							if (callback)
-								callback( keys[key][query],  query);
+                    // if has 0 parameters return all the items of the collection
+                    if (arguments.length == 0)
+                        return keys[key];
 
-							return [ (returnindex) ? query : keys[key][query] ];
-						}
-						else
-							return [];
-					}
 
-					// // If query is a function to filter
-					// else if (typeof query == 'function')
-					// 	filter = query;
 
-					else
-						return [];
 
+                    // If query is a object
+                    if ( query && typeof query == 'object' ) {
 
+                        // If query is a item of the collection itself
+                        var index_query = indexOf(keys[key], query);
+                        if ( index_query > -1 ) {
 
+                            if (callback)
+                                callback( keys[key][index_query],  index_query);
 
-					var modifier_filter = false, 
-						modifier_orderby = false,
-						index = 0,
-						len = keys[key].length,
-						results = [],
-						keep_searching = true,
-						k,
-						hastofind = false,
-						finded,
-						filtered;
+                            return [ (returnindex) ? index_query : keys[key][index_query] ];
+                        }
 
+                    }
 
+                    // If query is a int (index of the collection)
+                    else if (typeof query == 'number') {
 
+                        if ( keys[key].hasOwnProperty( query ) ) {
 
-					// Modifiers
-					if ( query.hasOwnProperty( modifier.filter ) )
-						modifier_filter = query[modifier.filter];
+                            if (callback)
+                                callback( keys[key][query],  query);
 
+                            return [ (returnindex) ? query : keys[key][query] ];
+                        }
+                        else
+                            return [];
+                    }
 
-					if ( query.hasOwnProperty( modifier.orderby ) )
-						modifier_orderby = (typeof query[modifier.orderby] == 'object') ?
-							query[modifier.orderby]
-						: 
-							[query[modifier.orderby]];
+                    // // If query is a function to filter
+                    // else if (typeof query == 'function')
+                    //  filter = query;
 
+                    else
+                        return [];
 
 
-					// Detect if the query has any property
-					for (k in query) {
-						if ( !ismodifier(k) ) {
-							hastofind = true;
-							break;
-						}
-					}
 
 
-					// Finding!
-					for (; index<len; index++) {
+                    var modifier_filter = false, 
+                        modifier_orderby = false,
+                        index = 0,
+                        len = keys[key].length,
+                        results = [],
+                        keep_searching = true,
+                        k,
+                        hastofind = false;
 
-						finded = ( hastofind ) ? find( keys[key][index], index, query ) : true;
 
-						if ( finded ) {
 
-							filtered = ( modifier_filter ) ? modifier_filter( keys[key][index], index, query ) : true;
 
-							if ( filtered ) {
+                    // Modifiers
+                    if ( query.hasOwnProperty( modifier.filter ) )
+                        modifier_filter = query[modifier.filter];
 
-								if (callback)
-									keep_searching = callback( keys[key][index],  index );
 
-								results.push( (returnindex) ? index : keys[key][index] );
+                    if ( query.hasOwnProperty( modifier.orderby ) )
+                        modifier_orderby = (typeof query[modifier.orderby] == 'object') ?
+                            query[modifier.orderby]
+                        : 
+                            [query[modifier.orderby]];
 
-								if (keep_searching === false)
-									break;
 
-							}
-						}
-					}
 
-					// Order by
-					if ( modifier_orderby ) {
-						// results = orderby.apply(results.slice(0), modifier_orderby);
-						results = sortBydeep(results.slice(0), '-a', '_id')
-					}
+                    // Detect if the query has any property
+                    for (k in query) {
+                        if ( !ismodifier(k) ) {
+                            hastofind = true;
+                            break;
+                        }
+                    }
 
-					return results;
 
-				},
+                    // Finding!
+                    for (; index<len; index++) {
 
+                        if ( ( hastofind ) ? find( keys[key][index], index, query ) : true ) {
 
+                            if ( ( modifier_filter ) ? modifier_filter( keys[key][index], index, query ) : true ) {
 
+                                if (callback)
+                                    keep_searching = callback( keys[key][index],  index );
 
+                                results.push( (returnindex) ? index : keys[key][index] );
 
+                                if (keep_searching === false)
+                                    break;
 
+                            }
+                        }
+                    }
 
-				findOne: function( query ) { // Object: first element found for the query given
 
-					return this.find( query, function(){
+                    // Order by
+                    if ( modifier_orderby )
+                        orderby.apply(results, modifier_orderby);
 
-						return false;
 
-					})[0];
+                    return results;
 
-				},
+                },
 
 
 
@@ -317,142 +320,160 @@ var sortBydeep=Array.prototype.sortBydeep=function(){var a=function(a,b){try{for
 
 
 
+                findOne: function( query ) { // Object: first element found for the query given
 
+                    var order = query.hasOwnProperty( modifier.orderby );
 
+                    return this.find( query, function(){
 
+                        return order;
 
+                    })[0] || null;
 
+                },
 
-				insert: function( items, callback ) { // Array: items inserted
 
-					if ( !isArray( items ) )
-						items = [items];
 
-					var _id,
-						index_collection,
-						index = 0,
-						len = items.length,
-						topush = [];
 
-					for (; index<len; index++) {
 
-						if ( items[index] && typeof items[index] == 'object' && !items[index].hasOwnProperty(_id) ) {
-							_id = new Date().getTime();
-							items[index]._id = lastid = _id = (_id <= lastid) ? lastid+1 : _id;
-						}
 
-						topush.push( items[index] );
-						index_collection = keys[key].push( items[index] );
 
-						if ( callback )
-							callback( items[index], index_collection-1, _id, index );
-					}
 
 
-					// Concatening save is faster than: this.save();
-					// http://jsperf.com/localstorage-setitem-concatenating-vs-json-stringify
-					localStorage.setItem(key, 
-						(keys[key].length-topush.length == 0) ?
-							stringify( topush )
-						:
-							localStorage.getItem(key).slice(0,-1) + "," + stringify( topush ).slice(1)
-					);
 
-					return topush;
 
-				},
 
 
+                insert: function( items, callback ) { // Array: items inserted
 
+                    if ( !isArray( items ) )
+                        items = [items];
 
+                    var _id,
+                        index_collection,
+                        index = 0,
+                        len = items.length,
+                        topush = [];
 
+                    for (; index<len; index++) {
 
-				update: function( query, data, callback ) { // Void
+                        if ( items[index] && typeof items[index] == 'object' && !items[index].hasOwnProperty(keyid) ) {
+                            _id = new Date().getTime();
+                            items[index][keyid] = lastid = _id = (_id <= lastid) ? lastid+1 : _id;
+                        }
 
-					var k;
+                        topush.push( items[index] );
+                        index_collection = keys[key].push( items[index] );
 
-					this.find( query, function( item, index ){
+                        if ( callback )
+                            callback( items[index], index_collection-1, _id, index );
+                    }
 
-						for (k in data) {
 
-							//if ( !item.hasOwnProperty(k) || data[k] !== item[k] )
+                    // Concatening save is faster than: this.save();
+                    // http://jsperf.com/localstorage-setitem-concatenating-vs-json-stringify
+                    localStorage.setItem(key, 
+                        (keys[key].length-topush.length == 0) ?
+                            stringify( topush )
+                        :
+                            localStorage.getItem(key).slice(0,-1) + "," + stringify( topush ).slice(1)
+                    );
 
-							if (callback)
-								callback( keys[key][index], index );
+                    return topush;
 
-							item[k] = data[k];
+                },
 
-						}
 
-					}, true);
-					
-					this.save();
 
-				},
 
 
 
+                update: function( query, data, callback ) { // Void
 
+                    var k;
 
+                    this.find( query, function( item, index ){
 
-				remove: function( query, callback ) { // Void
+                        for (k in data) {
 
-					var toremove = this.find( query, null, true ),
-						index,
-						i = 0,
-						len = toremove.length;
+                            //if ( !item.hasOwnProperty(k) || data[k] !== item[k] )
 
-					for (; i<len; i++) {
+                            if (callback)
+                                callback( keys[key][index], index );
 
-						index = toremove[i]-i;
+                            item[k] = data[k];
 
-						if (callback)
-							callback( keys[key][index], index );
+                        }
 
-						keys[key].splice( index, 1 );
+                    }, true);
+                    
+                    this.save();
 
-					}
+                },
 
-					this.save();
 
-				},
 
 
 
 
+                remove: function( query, callback ) { // Void
 
-				save: function() { // Void
-					localStorage.setItem(key, stringify( keys[key] ));
-				},
+                    var toremove = this.find( query, null, true ),
+                        index,
+                        i = 0,
+                        len = toremove.length;
 
+                    for (; i<len; i++) {
 
+                        index = toremove[i]-i;
 
+                        if (callback)
+                            callback( keys[key][index], index );
 
+                        keys[key].splice( index, 1 );
 
+                    }
 
-				drop: function() { // Void
-					keys[key] = [];
-					localStorage.setItem(key, '[]');
-				}
+                    this.save();
 
-			};
+                },
 
 
 
 
-			// var $this = this;
 
-			keys[key] = this.get( key );
+                save: function() { // Void
+                    localStorage.setItem(key, stringify( keys[key] ));
+                },
 
-			if ( !isArray( keys[key] ) )
-				methods.drop();
 
-			return methods;
 
-		}
 
 
-	}
+
+                drop: function() { // Void
+                    keys[key] = [];
+                    localStorage.setItem(key, '[]');
+                }
+
+            };
+
+
+
+
+            // var $this = this;
+
+            keys[key] = this.get( key );
+
+            if ( !isArray( keys[key] ) )
+                methods.drop();
+
+            return methods;
+
+        }
+
+
+    }
 
 })();
 
